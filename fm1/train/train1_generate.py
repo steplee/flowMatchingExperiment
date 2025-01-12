@@ -5,6 +5,7 @@ if __name__ == '__main__':
 
     conf0 = {
         'inferenceOnly': True,
+        'T': 100,
     }
     conf = OmegaConf.merge(conf0, OmegaConf.from_cli())
 
@@ -15,7 +16,7 @@ if __name__ == '__main__':
     x0 = torch.randn(B, 3, tr.imgSize, tr.imgSize).cuda() * tr.pSigma
 
     for method in 'euler midpoint'.split(' '):
-        y = tr.sample_images_unconditional(x0=x0, solver=method)
+        y = tr.sample_images_unconditional(x0=x0, solver=method, T=conf.T)
         B,C,H,W = y.size()
         y = y.view(4,8,3,H,W)
         y = torch.cat((y, torch.full((4,8,3,H,1), -9e4).to(y.device)), -1)

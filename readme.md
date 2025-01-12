@@ -50,3 +50,5 @@ It was also relatively easy to get to work. I remember trying to train GANs a fe
 But with this FM training scheme, I got great results in a day! The authors were clear and the papers had just the right amount of theory (IMO most diffusion papers go off the rails to gain mathematical street cred, but perhaps it really is necessary).
 
 I *did* have to copy the UNet model from github. The next step will be understanding that in detail and what makes it so much better than my initial attempt.
+
+Also on one quick test: `euler` = `midpoint` when `T` is 100 steps. But `midpoint` better than `euler` when `T` is only 10 steps.

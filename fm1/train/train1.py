@@ -177,7 +177,7 @@ class Trainer:
 
 
 
-    def sample_images_unconditional(self, B=None, x0=None, solver='euler'):
+    def sample_images_unconditional(self, B=None, x0=None, solver='euler', T=100):
         with torch.no_grad():
             self.modelCallable.eval()
             if x0 is None:
@@ -186,9 +186,8 @@ class Trainer:
                 B = x0.size(0)
             xt = x0
 
-            N = 100
-            dt = 1 / N
-            for i,t in enumerate(torch.linspace(0, 1, N, device=xt.device)):
+            dt = 1 / T
+            for i,t in enumerate(torch.linspace(0, 1, T, device=xt.device)):
 
                 if solver == 'euler':
                     v_t = self.modelCallable(xt, t.view(1,1,1,1).repeat(B,1,1,1))
@@ -202,12 +201,12 @@ class Trainer:
                     ValueError('invalid ODE solver')
 
                 if hasattr(self, 'SW'):
-                    if i == N//2:
+                    if i == T//2:
                         xx = xt.div(self.pixelScale).add(.4).mul_(255)
                         self.SW.add_scalar('eval/xtPixMeanMean@t=0.5', xx.flatten(2).mean(dim=-1).mean(), self.iter)
                         self.SW.add_scalar('eval/xtPixMeanStd @t=0.5', xx.flatten(2).std(dim=-1).mean(), self.iter)
                         self.SW.add_scalar('eval/vtNormMean@t=0.5', v_t.norm(dim=1).mean() * 255/self.pixelScale, self.iter)
-                    if i == N-1:
+                    if i == T-1:
                         xx = xt.div(self.pixelScale).add(.4).mul_(255)
                         self.SW.add_scalar('eval/xtPixMeanMean@t=1', xx.flatten(2).mean(dim=-1).mean(), self.iter)
                         self.SW.add_scalar('eval/xtPixMeanStd @t=1', xx.flatten(2).std(dim=-1).mean(), self.iter)
