@@ -45,7 +45,7 @@ class Into(nn.Module):
                 act())
 
         self.into_t = nn.Sequential(
-                nn.Conv2d(1, 32, 3, padding=1, bias=False),
+                nn.Conv2d(1, 32, 1, padding=1, bias=False),
                 act())
 
         with torch.no_grad():
@@ -82,7 +82,7 @@ class Up(nn.Module):
                 self.net[-2].weight.data.mul_(INITIAL_RESIDUAL_WEIGHT['up'])
         else:
             # Larger model...
-            Cmid = C0 * 2
+            Cmid = C0 * 3 // 2
             self.net = nn.Sequential(make_block(C0, Cmid), make_block(Cmid, C2))
             with torch.no_grad():
                 self.net[-1][-2].weight.data.mul_(INITIAL_RESIDUAL_WEIGHT['up'])

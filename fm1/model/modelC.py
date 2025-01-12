@@ -6,32 +6,38 @@ import torch, torch.nn as nn, torch.nn.functional as F
 
 if 1:
     # I think this is more sensible?
-    INITIAL_RESIDUAL_WEIGHT = dict(up = .1, across = 1)
+    # INITIAL_RESIDUAL_WEIGHT = dict(up = .3, across = .9)
+    INITIAL_RESIDUAL_WEIGHT = dict(up = .2, across = 1, upThrough=1.0) # noisy but after 20min looks good. Actually looks like loss goes lower than other mdoels, but sample quality goes to shit.
+    # INITIAL_RESIDUAL_WEIGHT = dict(up = .2, across = 1, upThrough=.3)
 else:
     INITIAL_RESIDUAL_WEIGHT = dict(up = 1, across = .1)
 
 # Well it's not a residual, but let's lower initial weight of `into_t` relative to `into_x`.
 # (Weighing time less than input pixels...)
-INITIAL_RESIDUAL_WEIGHT['into_t'] = .1
+INITIAL_RESIDUAL_WEIGHT['into_t'] = .2
 
 bias = False
 def nl(C):
-    return nn.GroupNorm(32, C)
+    return nn.BatchNorm2d(C)
+    # return nn.GroupNorm(32, C)
 def act():
     return nn.ReLU(True)
 
-def make_block(C0, C2):
+def make_block(C0, C2, lastAct=True):
     C1 = C2 * 2
+    groups = 1 if C1 < 256 else 8
+    if lastAct: extra = [act()]
+    else: extra = []
     return nn.Sequential(
             nn.Conv2d(C0, C1, 3, padding=0, bias=bias),
             nl(C1),
             act(),
-            nn.Conv2d(C1, C1, 1, padding=1, bias=bias),
+            nn.Conv2d(C1, C1, 1, padding=1, bias=bias, groups=groups),
             nl(C1),
             act(),
             nn.Conv2d(C1, C2, 3, padding=1, bias=bias),
             nl(C2),
-            act())
+            *extra)
 
 
 # Maps `x` (original image) and `t` (time scalar in [0,1]) to the first feature
@@ -44,7 +50,7 @@ class Into(nn.Module):
                 act())
 
         self.into_t = nn.Sequential(
-                nn.Conv2d(1, 32, 3, padding=1, bias=False), # FIXME: should have k=1
+                nn.Conv2d(1, 32, 1, padding=0, bias=False),
                 act())
 
         with torch.no_grad():
@@ -75,24 +81,32 @@ class Up(nn.Module):
     def __init__(self, C0, C2):
         super().__init__()
 
-        if 0:
-            self.net = make_block(C0, C2)
-            with torch.no_grad():
-                self.net[-2].weight.data.mul_(INITIAL_RESIDUAL_WEIGHT['up'])
-        else:
-            # Larger model...
-            Cmid = C0 * 2
-            self.net = nn.Sequential(make_block(C0, Cmid), make_block(Cmid, C2))
-            with torch.no_grad():
-                self.net[-1][-2].weight.data.mul_(INITIAL_RESIDUAL_WEIGHT['up'])
+        Cmid = C0 * 2
+        self.net = nn.Sequential(make_block(C0, Cmid), make_block(Cmid, C2))
+        with torch.no_grad():
+            self.net[-1][-2].weight.data.mul_(INITIAL_RESIDUAL_WEIGHT['up'])
 
-        self.doublescale = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.doublescale = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear'),
+                nn.Conv2d(C2, C2, 3, padding=1, bias=bias),
+                nl(C2))
+
+        self.through = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Conv2d(C0, C2, 1, groups=8 if C2>=256 else 1, bias=False),
+            nl(C2))
+        with torch.no_grad():
+            self.through[-1].weight.data.mul_(INITIAL_RESIDUAL_WEIGHT['upThrough'])
+
+        self.act = act()
 
 
-    def forward(self, x):
-        x = self.net(x)
+
+    def forward(self, x0):
+        x = self.net(x0)
         x = self.doublescale(x)
-        return x
+        x = self.through(x0) + x
+        return self.act(x)
 
 class Across(nn.Module):
     def __init__(self, C0):
@@ -110,7 +124,7 @@ class Across(nn.Module):
         return self.net(x)
 
 
-class ModelA(nn.Module):
+class ModelC(nn.Module):
     def __init__(self, modelConf):
         super().__init__()
 
@@ -135,7 +149,7 @@ class ModelA(nn.Module):
         self.outof = nn.Sequential(
                 nn.Conv2d(channels[0], channels[0]//2, 3, padding=1, bias=False),
                 act(),
-                nn.Conv2d(channels[0]//2, 3, 3, padding=1))
+                nn.Conv2d(channels[0]//2, 3, 1))
 
     def forward(self, x, t):
         x = self.into(x, t)
@@ -159,7 +173,9 @@ class ModelA(nn.Module):
 
 
 if __name__ == '__main__':
-    m = ModelA({})
+    m = ModelC({})
+    print(m)
     x = torch.randn(1,3,128,128)
     t = torch.rand(1,1,1,1)
-    y = m(x,t )
+    y = m(x,t)
+

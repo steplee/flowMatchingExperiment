@@ -88,7 +88,6 @@ class Trainer:
         if len(conf.dataParallelIds) > 0:
             self.modelCallable = torch.nn.DataParallel(self.model, device_ids=conf.dataParallelIds)
 
-        self.dataset = HalfScaleDataset(conf.data.root, conf.data.imgSize)
         self.imgSize = conf.data.imgSize
         self.epoch = 0
         self.iter0 = conf.get('iter', 0)
@@ -98,9 +97,12 @@ class Trainer:
         self.pSigma = conf.pSigma
         self.sigma_min = self.pixelScale * 2 / 255
 
-        self.opt = get_optim(conf, self.modelCallable, self.iter0)
-        print('title', conf.title)
-        self.SW = SummaryWriter(conf.title, conf.outDir)
+        if not conf.get('inferenceOnly', False):
+            self.dataset = HalfScaleDataset(conf.data.root, conf.data.imgSize)
+
+            self.opt = get_optim(conf, self.modelCallable, self.iter0)
+            print('title', conf.title)
+            self.SW = SummaryWriter(conf.title, conf.outDir)
 
 
     def run(self):
@@ -175,28 +177,41 @@ class Trainer:
 
 
 
-    def sample_images_unconditional(self, B):
+    def sample_images_unconditional(self, B=None, x0=None, solver='euler'):
         with torch.no_grad():
             self.modelCallable.eval()
-            x0 = torch.randn(B, 3, self.imgSize, self.imgSize).cuda() * self.pSigma
+            if x0 is None:
+                x0 = torch.randn(B, 3, self.imgSize, self.imgSize).cuda() * self.pSigma
+            else:
+                B = x0.size(0)
             xt = x0
 
             N = 100
             dt = 1 / N
             for i,t in enumerate(torch.linspace(0, 1, N, device=xt.device)):
-                v_t = self.modelCallable(xt, t.view(1,1,1,1).repeat(B,1,1,1))
-                xt = xt + v_t * dt
 
-                if i == N//2:
-                    xx = xt.div(self.pixelScale).add(.4).mul_(255)
-                    self.SW.add_scalar('eval/xtPixMeanMean@t=0.5', xx.flatten(2).mean(dim=-1).mean(), self.iter)
-                    self.SW.add_scalar('eval/xtPixMeanStd @t=0.5', xx.flatten(2).std(dim=-1).mean(), self.iter)
-                    self.SW.add_scalar('eval/vtNormMean@t=0.5', v_t.norm(dim=1).mean() * 255/self.pixelScale, self.iter)
-                if i == N-1:
-                    xx = xt.div(self.pixelScale).add(.4).mul_(255)
-                    self.SW.add_scalar('eval/xtPixMeanMean@t=1', xx.flatten(2).mean(dim=-1).mean(), self.iter)
-                    self.SW.add_scalar('eval/xtPixMeanStd @t=1', xx.flatten(2).std(dim=-1).mean(), self.iter)
-                    self.SW.add_scalar('eval/vtNormMean@t=1', v_t.norm(dim=1).mean() * 255/self.pixelScale, self.iter)
+                if solver == 'euler':
+                    v_t = self.modelCallable(xt, t.view(1,1,1,1).repeat(B,1,1,1))
+                    xt = xt + v_t * dt
+                elif solver == 'midpoint':
+                    v_t = self.modelCallable(xt, t.view(1,1,1,1).repeat(B,1,1,1))
+                    xt5 = xt + v_t * dt * .5
+                    v_t5 = self.modelCallable(xt5, t.view(1,1,1,1).repeat(B,1,1,1) + dt * .5)
+                    xt = xt + v_t5 * dt
+                else:
+                    ValueError('invalid ODE solver')
+
+                if hasattr(self, 'SW'):
+                    if i == N//2:
+                        xx = xt.div(self.pixelScale).add(.4).mul_(255)
+                        self.SW.add_scalar('eval/xtPixMeanMean@t=0.5', xx.flatten(2).mean(dim=-1).mean(), self.iter)
+                        self.SW.add_scalar('eval/xtPixMeanStd @t=0.5', xx.flatten(2).std(dim=-1).mean(), self.iter)
+                        self.SW.add_scalar('eval/vtNormMean@t=0.5', v_t.norm(dim=1).mean() * 255/self.pixelScale, self.iter)
+                    if i == N-1:
+                        xx = xt.div(self.pixelScale).add(.4).mul_(255)
+                        self.SW.add_scalar('eval/xtPixMeanMean@t=1', xx.flatten(2).mean(dim=-1).mean(), self.iter)
+                        self.SW.add_scalar('eval/xtPixMeanStd @t=1', xx.flatten(2).std(dim=-1).mean(), self.iter)
+                        self.SW.add_scalar('eval/vtNormMean@t=1', v_t.norm(dim=1).mean() * 255/self.pixelScale, self.iter)
 
             self.modelCallable.train()
             return xt
@@ -233,8 +248,8 @@ if __name__ == '__main__':
         'pSigma': 3,
 
         'model': {
-            # 'kind': 'fm1.model.modelA.ModelA'
-            'kind': 'fm1.model.modelB.ModelB'
+            # 'kind': 'A'
+            'kind': 'B'
         },
         'train': {
             'iters': 75_000,
@@ -253,7 +268,18 @@ if __name__ == '__main__':
 
     conf = OmegaConf.merge(conf0, OmegaConf.from_cli())
 
+    if conf.model.kind.lower() == 'a': conf.model.kind = 'fm1.model.modelA.ModelA'
+    if conf.model.kind.lower() == 'b': conf.model.kind = 'fm1.model.modelB.ModelB'
+    if conf.model.kind.lower() == 'c': conf.model.kind = 'fm1.model.modelC.ModelC'
+    if conf.model.kind.lower() == 'd': conf.model.kind = 'fm1.model.modelD.ModelD'
+    if conf.model.kind.lower() == 'unet': conf.model.kind = 'fm1.model.unet_wrapper.ModelUnet'
+
     tr = Trainer(conf)
+
+    with open('/tmp/model.txt','w') as fp:
+        print(tr.model, file=fp)
+        print(' - Wrote model info to \'/tmp/model.txt\'')
+
     try:
         tr.run()
     except KeyboardInterrupt:
