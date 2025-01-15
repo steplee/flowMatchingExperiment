@@ -73,11 +73,16 @@ class HalfScaleDataset(torch.utils.data.IterableDataset):
         x = int(np.random.uniform(W - ss - 4) + 2)
         y = int(np.random.uniform(H - ss - 4) + 2)
 
-        b = b.readPixelRange((x,y,ss,ss), self.size//2, self.size//2, 3)
 
-        if b is None or (b == b[0,0]).all(): return None
-
-        a = a.readPixelRange((x,y,ss,ss), self.size, self.size, 3)
+        # WARNING:
+        # FIXME: full res disabled for now
+        if 0:
+            b = b.readPixelRange((x,y,ss,ss), self.size//2, self.size//2, 3)
+            if b is None or (b == b[0,0]).all(): return None
+            a = a.readPixelRange((x,y,ss,ss), self.size, self.size, 3)
+        else:
+            a = a.readPixelRange((x,y,ss,ss), self.size, self.size, 3)
+            b = a
 
         if self.allowFlip:
             r = np.random.randint(0,4)

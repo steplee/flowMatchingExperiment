@@ -52,3 +52,8 @@ But with this FM training scheme, I got great results in a day! The authors were
 I *did* have to copy the UNet model from github. The next step will be understanding that in detail and what makes it so much better than my initial attempt.
 
 Also on one quick test: `euler` = `midpoint` when `T` is 100 steps. But `midpoint` better than `euler` when `T` is only 10 steps.
+
+##### Jan 14
+Trained a 256x256 model and it definitely does not look realistic, but it does look very good.
+
+I think I'm seeing some mode switching (not full collapse). Outputting 32 samples every 500 iters, it will e.g. swap between 90% desert + 10% forest -> 80% suburb + 20% desert. The model is not entirely forgetting how to generate paths to any one environment, but depending on exact training iter we certainly have mode preferences. Maybe lr is too high?

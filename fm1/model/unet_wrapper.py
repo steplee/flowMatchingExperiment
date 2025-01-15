@@ -1,4 +1,4 @@
-from .unet_openai import UNetModel, torch, nn
+import torch, torch.nn as nn
 
 
 
@@ -6,8 +6,17 @@ from .unet_openai import UNetModel, torch, nn
 class ModelUnet(nn.Module):
     def __init__(self, modelConf):
         super().__init__()
+
+        clazz = None
+        version = modelConf.get('version', 1)
+
+        if version == 1:
+            from .unet_openai import UNetModel
+        elif version == 2:
+            from .unet_openai2 import UNetModel
+
         self.unet = UNetModel(
-            image_size=64,
+            image_size=modelConf.imgSize,
             in_channels=3,
             model_channels=32,
             out_channels=3,

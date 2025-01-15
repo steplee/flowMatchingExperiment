@@ -123,8 +123,12 @@ class Trainer:
         # WARNING: This is all unconditional for now?.?.?
 
         # print(y.shape,x.shape)
-        x1 = F.upsample(xhalf, scale_factor=2)
-        y1 = y
+        if 0:
+            x1 = F.upsample(xhalf, scale_factor=2)
+            y1 = y
+        else:
+            x1=y
+            y1=y
 
         if iter == self.iter0:
             self.show_some_training_examples(x1,y1)
@@ -177,7 +181,7 @@ class Trainer:
 
 
 
-    def sample_images_unconditional(self, B=None, x0=None, solver='euler', T=100):
+    def sample_images_unconditional(self, B=None, x0=None, solver='euler', T=100, yield_results=False):
         with torch.no_grad():
             self.modelCallable.eval()
             if x0 is None:
@@ -211,6 +215,9 @@ class Trainer:
                         self.SW.add_scalar('eval/xtPixMeanMean@t=1', xx.flatten(2).mean(dim=-1).mean(), self.iter)
                         self.SW.add_scalar('eval/xtPixMeanStd @t=1', xx.flatten(2).std(dim=-1).mean(), self.iter)
                         self.SW.add_scalar('eval/vtNormMean@t=1', v_t.norm(dim=1).mean() * 255/self.pixelScale, self.iter)
+
+                if yield_results:
+                    yield xt
 
             self.modelCallable.train()
             return xt
@@ -272,6 +279,7 @@ if __name__ == '__main__':
     if conf.model.kind.lower() == 'c': conf.model.kind = 'fm1.model.modelC.ModelC'
     if conf.model.kind.lower() == 'd': conf.model.kind = 'fm1.model.modelD.ModelD'
     if conf.model.kind.lower() == 'unet': conf.model.kind = 'fm1.model.unet_wrapper.ModelUnet'
+    conf.model.imgSize = conf.data.imgSize
 
     tr = Trainer(conf)
 

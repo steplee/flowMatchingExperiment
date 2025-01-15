@@ -366,6 +366,8 @@ class ResBlock(TimestepBlock):
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
             ),
         )
+
+
         self.out_layers = nn.Sequential(
             normalization(self.out_channels),
             nn.SiLU(),
@@ -593,10 +595,6 @@ class UNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
-
-        # NOTE: (steplee) added
-        simple_timestep_embedding=False,
-        timestep_embedding_initial_scale=1,
     ):
         super().__init__()
 
@@ -618,18 +616,18 @@ class UNetModel(nn.Module):
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
-        self.simple_timestep_embedding = simple_timestep_embedding
 
         time_embed_dim = model_channels * 4
-        time_embed_in_dim = 1 if self.simple_timestep_embedding else model_channels
+        time_embed_in_dim = 1
         self.time_embed = nn.Sequential(
             linear(time_embed_in_dim, time_embed_dim),
             nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
+
         with torch.no_grad():
-            print('ini timestep scale', timestep_embedding_initial_scale)
-            self.time_embed[-1].weight.data.mul_(timestep_embedding_initial_scale)
+            print('(steplee) lower t_emb weight in unet')
+            self.time_embed[-1].weight.data.mul_(.1)
 
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
@@ -803,11 +801,9 @@ class UNetModel(nn.Module):
         ), "must specify y if and only if the model is class-conditional"
 
         hs = []
-        if self.simple_timestep_embedding:
+        if 1:
             timesteps = timesteps[:,None]
             emb = self.time_embed(timesteps)
-        else:
-            emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
@@ -869,7 +865,6 @@ class EncoderUNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
-        simple_timestep_embedding=False, # NOTE: (steplee) added
         pool="adaptive",
     ):
         assert False
@@ -893,7 +888,6 @@ class EncoderUNetModel(nn.Module):
         self.num_heads_upsample = num_heads_upsample
 
         time_embed_dim = model_channels * 4
-        time_embed_in_dim = 1 if self.simple_timestep_embedding else model_channels
         self.time_embed = nn.Sequential(
             linear(time_embed_in_dim, time_embed_dim),
             nn.SiLU(),
@@ -1057,3 +1051,4 @@ class EncoderUNetModel(nn.Module):
         else:
             h = h.type(x.dtype)
             return self.out(h)
+
